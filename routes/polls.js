@@ -1,59 +1,59 @@
-const express = require('express');
-const Poll = require('../models/Poll');
-const Trade = require('../models/Trade');
-const User = require('../models/User');
-const { auth, optionalAuth } = require('../middleware/auth');
+const express = require("express");
+const Poll = require("../models/Poll");
+const Trade = require("../models/Trade");
+const User = require("../models/User");
+const { auth, optionalAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
 // @route   GET /api/polls
 // @desc    Get all polls with filtering
 // @access  Public
-router.get('/', optionalAuth, async (req, res) => {
+router.get("/", optionalAuth, async (req, res) => {
   try {
     const {
       category,
       subCategory,
       search,
-      sort = 'createdAt',
-      order = 'desc',
+      sort = "createdAt",
+      order = "desc",
       page = 1,
       limit = 20,
       trending,
       featured,
       timeframe, // 'hour' | 'day' | 'month'
-      cryptoName
+      cryptoName,
     } = req.query;
 
-    const query = { isActive: true };
+    const query = { $or: [{ isActive: true }, { isResolved: true }] };
     const sortOptions = {};
 
     // Category filter
-    if (category && category !== 'All') {
+    if (category && category !== "All") {
       query.category = category;
     }
 
     // Sub-category filter
-    if (subCategory && subCategory !== 'All') {
+    if (subCategory && subCategory !== "All") {
       query.subCategory = subCategory;
     }
 
     // Search filter
     if (search) {
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { tags: { $in: [new RegExp(search, 'i')] } }
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { tags: { $in: [new RegExp(search, "i")] } },
       ];
     }
 
     // Trending filter
-    if (trending === 'true') {
+    if (trending === "true") {
       query.trending = true;
     }
 
     // Featured filter
-    if (featured === 'true') {
+    if (featured === "true") {
       query.featured = true;
     }
 
@@ -66,11 +66,11 @@ router.get('/', optionalAuth, async (req, res) => {
     if (timeframe) {
       const now = new Date();
       let from;
-      if (timeframe === 'hour' || timeframe === 'hourly') {
+      if (timeframe === "hour" || timeframe === "hourly") {
         from = new Date(now.getTime() - 60 * 60 * 1000);
-      } else if (timeframe === 'day' || timeframe === 'daily') {
+      } else if (timeframe === "day" || timeframe === "daily") {
         from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      } else if (timeframe === 'month' || timeframe === 'monthly') {
+      } else if (timeframe === "month" || timeframe === "monthly") {
         from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       }
       if (from) {
@@ -80,23 +80,23 @@ router.get('/', optionalAuth, async (req, res) => {
 
     // Sort options
     switch (sort) {
-      case 'volume':
-        sortOptions.totalVolume = order === 'desc' ? -1 : 1;
+      case "volume":
+        sortOptions.totalVolume = order === "desc" ? -1 : 1;
         break;
-      case 'trades':
-        sortOptions.totalTrades = order === 'desc' ? -1 : 1;
+      case "trades":
+        sortOptions.totalTrades = order === "desc" ? -1 : 1;
         break;
-      case 'endDate':
-        sortOptions.endDate = order === 'desc' ? -1 : 1;
+      case "endDate":
+        sortOptions.endDate = order === "desc" ? -1 : 1;
         break;
       default:
-        sortOptions.createdAt = order === 'desc' ? -1 : 1;
+        sortOptions.createdAt = order === "desc" ? -1 : 1;
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const polls = await Poll.find(query)
-      .populate('createdBy', 'username avatar')
+      .populate("createdBy", "username avatar")
       .sort(sortOptions)
       .skip(skip)
       .limit(parseInt(limit));
@@ -115,29 +115,29 @@ router.get('/', optionalAuth, async (req, res) => {
         totalPages: Math.ceil(total / parseInt(limit)),
         total,
         hasNext: skip + polls.length < total,
-        hasPrev: parseInt(page) > 1
-      }
+        hasPrev: parseInt(page) > 1,
+      },
     });
   } catch (error) {
-    console.error('Get polls error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get polls error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // @route   GET /api/polls/trending
 // @desc    Get trending polls
 // @access  Public
-router.get('/trending', optionalAuth, async (req, res) => {
+router.get("/trending", optionalAuth, async (req, res) => {
   try {
     const { limit = 10 } = req.query;
 
     const polls = await Poll.find({
       isActive: true,
-      trending: true
+      trending: true,
     })
-    .populate('createdBy', 'username avatar')
-    .sort({ totalVolume: -1, totalTrades: -1 })
-    .limit(parseInt(limit));
+      .populate("createdBy", "username avatar")
+      .sort({ totalVolume: -1, totalTrades: -1 })
+      .limit(parseInt(limit));
 
     // Update percentages
     for (let poll of polls) {
@@ -146,47 +146,151 @@ router.get('/trending', optionalAuth, async (req, res) => {
 
     res.json(polls);
   } catch (error) {
-    console.error('Get trending polls error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get trending polls error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // @route   GET /api/polls/categories
 // @desc    Get available categories and sub-categories
 // @access  Public
-router.get('/categories', async (req, res) => {
+router.get("/categories", async (req, res) => {
   try {
     const categories = {
-      'Politics': ['All', 'Trump-Putin', 'Trump Presidency', 'Trade War', 'Israel Ukraine', 'Inflation', 'AI Geopolitics GPT-5', 'Texas', 'Redistricting', 'Epstein', 'Jerome Powell', 'Earn 4%', 'Fed Rates'],
-      'Middle East': ['All', 'Israel Gaza', 'India-Pakistan', 'Iran Military Actions', 'Khamenei', 'Syria', 'Yemen', 'Lebanon', 'Turkey'],
-      'Crypto': ['All', 'Bitcoin', 'Ethereum', 'Binance', 'Cardano', 'Solana', 'Polkadot', 'Chainlink', 'Uniswap', 'DeFi', 'NFTs'],
-      'Tech': ['All', 'AI', 'GPT-5', 'Elon Musk', 'Grok', 'Science', 'SpaceX', 'OpenAI', 'MicroStrategy', 'Big Tech', 'TikTok', 'Meta'],
-      'Culture': ['All', 'Tweet Markets', 'Astronomer', 'Movies', 'Courts', 'Weather', 'GTA VI', 'Kanye', 'Global Temp', 'Mentions', 'Celebrities', 'New Pope', 'Elon Musk', 'Music', 'Pandemics', 'Awards'],
-      'World': ['All', 'Bolivia', 'Ukraine', 'Iran', 'Middle East', 'Global Elections', 'India-Pakistan', 'Gaza', 'Israel', 'China', 'Geopolitics'],
-      'Economy': ['All', 'Trade War', 'Fed Rates', 'Inflation', 'Taxes', 'Macro Indicators', 'Treasuries'],
-      'Sports': ['All', 'Football', 'Basketball', 'Baseball', 'Soccer', 'Tennis', 'Golf', 'Boxing', 'MMA', 'Olympics'],
-      'Elections': ['All', 'US Presidential', 'US Senate', 'US House', 'State Elections', 'International Elections'],
-      'Mentions': ['All', 'Twitter', 'Reddit', 'YouTube', 'TikTok', 'Instagram']
+      Politics: [
+        "All",
+        "Trump-Putin",
+        "Trump Presidency",
+        "Trade War",
+        "Israel Ukraine",
+        "Inflation",
+        "AI Geopolitics GPT-5",
+        "Texas",
+        "Redistricting",
+        "Epstein",
+        "Jerome Powell",
+        "Earn 4%",
+        "Fed Rates",
+      ],
+      "Middle East": [
+        "All",
+        "Israel Gaza",
+        "India-Pakistan",
+        "Iran Military Actions",
+        "Khamenei",
+        "Syria",
+        "Yemen",
+        "Lebanon",
+        "Turkey",
+      ],
+      Crypto: [
+        "All",
+        "Bitcoin",
+        "Ethereum",
+        "Binance",
+        "Cardano",
+        "Solana",
+        "Polkadot",
+        "Chainlink",
+        "Uniswap",
+        "DeFi",
+        "NFTs",
+      ],
+      Tech: [
+        "All",
+        "AI",
+        "GPT-5",
+        "Elon Musk",
+        "Grok",
+        "Science",
+        "SpaceX",
+        "OpenAI",
+        "MicroStrategy",
+        "Big Tech",
+        "TikTok",
+        "Meta",
+      ],
+      Culture: [
+        "All",
+        "Tweet Markets",
+        "Astronomer",
+        "Movies",
+        "Courts",
+        "Weather",
+        "GTA VI",
+        "Kanye",
+        "Global Temp",
+        "Mentions",
+        "Celebrities",
+        "New Pope",
+        "Elon Musk",
+        "Music",
+        "Pandemics",
+        "Awards",
+      ],
+      World: [
+        "All",
+        "Bolivia",
+        "Ukraine",
+        "Iran",
+        "Middle East",
+        "Global Elections",
+        "India-Pakistan",
+        "Gaza",
+        "Israel",
+        "China",
+        "Geopolitics",
+      ],
+      Economy: [
+        "All",
+        "Trade War",
+        "Fed Rates",
+        "Inflation",
+        "Taxes",
+        "Macro Indicators",
+        "Treasuries",
+      ],
+      Sports: [
+        "All",
+        "Football",
+        "Basketball",
+        "Baseball",
+        "Soccer",
+        "Tennis",
+        "Golf",
+        "Boxing",
+        "MMA",
+        "Olympics",
+      ],
+      Elections: [
+        "All",
+        "US Presidential",
+        "US Senate",
+        "US House",
+        "State Elections",
+        "International Elections",
+      ],
+      Mentions: ["All", "Twitter", "Reddit", "YouTube", "TikTok", "Instagram"],
     };
 
     res.json(categories);
   } catch (error) {
-    console.error('Get categories error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get categories error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // @route   GET /api/polls/:id
 // @desc    Get single poll by ID
 // @access  Public
-router.get('/:id', optionalAuth, async (req, res) => {
+router.get("/:id", optionalAuth, async (req, res) => {
   try {
     const poll = await Poll.findById(req.params.id)
-      .populate('createdBy', 'username avatar')
-      .populate('candidates');
+      .populate("createdBy", "username avatar")
+      .populate("candidates");
 
     if (!poll) {
-      return res.status(404).json({ message: 'Poll not found' });
+      return res.status(404).json({ message: "Poll not found" });
     }
 
     // Update percentages
@@ -198,24 +302,27 @@ router.get('/:id', optionalAuth, async (req, res) => {
       orderBook = await Trade.getOrderBook(poll._id, 0);
     }
 
-    // Get trade history
-    const tradeHistory = await Trade.getTradeHistory(poll._id, 50);
+    // Get recent trade history (include pending/completed so UI shows recent trades immediately)
+    const tradeHistory = await Trade.find({ poll: poll._id })
+      .populate("user", "username avatar")
+      .sort({ createdAt: -1 })
+      .limit(50);
 
     res.json({
       poll,
       orderBook,
-      tradeHistory
+      tradeHistory,
     });
   } catch (error) {
-    console.error('Get poll error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get poll error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // @route   POST /api/polls
 // @desc    Create a new poll
 // @access  Private
-router.post('/', auth, async (req, res) => {
+router.post("/", auth, async (req, res) => {
   try {
     const {
       title,
@@ -236,23 +343,35 @@ router.post('/', auth, async (req, res) => {
       country,
       countryFlag,
       candidates,
-      location
+      location,
+      marketId,
     } = req.body;
 
     // Validate required fields
-    if (!title || !description || !category || !subCategory || !options || !endDate) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    if (
+      !title ||
+      !description ||
+      !category ||
+      !subCategory ||
+      !options ||
+      !endDate
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
     // Validate options
     if (!Array.isArray(options) || options.length < 2) {
-      return res.status(400).json({ message: 'At least 2 options are required' });
+      return res
+        .status(400)
+        .json({ message: "At least 2 options are required" });
     }
 
     // Validate end date
     const endDateObj = new Date(endDate);
     if (endDateObj <= new Date()) {
-      return res.status(400).json({ message: 'End date must be in the future' });
+      return res
+        .status(400)
+        .json({ message: "End date must be in the future" });
     }
 
     const pollData = {
@@ -260,32 +379,34 @@ router.post('/', auth, async (req, res) => {
       description,
       category,
       subCategory,
-      options: options.map(opt => ({
+      options: options.map((opt) => ({
         text: opt.text,
-        image: opt.image || '',
-        percentage: 100 / options.length
+        image: opt.image || "",
+        percentage: 100 / options.length,
       })),
       endDate: endDateObj,
-      rules: rules || 'Standard prediction market rules apply.',
+      rules: rules || "Standard prediction market rules apply.",
       tags: tags || [],
-      image: image || '',
-      createdBy: req.user._id
+      image: image || "",
+      createdBy: req.user._id,
+      // include optional blockchain market id if provided
+      marketId: marketId || null,
     };
 
     // Add category-specific data
-    if (category === 'Sports' && team1 && team2) {
+    if (category === "Sports" && team1 && team2) {
       pollData.team1 = team1;
       pollData.team2 = team2;
       pollData.matchTime = matchTime;
       pollData.sportType = sportType;
     }
 
-    if (category === 'Crypto' && cryptoName) {
+    if (category === "Crypto" && cryptoName) {
       pollData.cryptoName = cryptoName;
       pollData.cryptoLogo = cryptoLogo;
     }
 
-    if (category === 'Elections' && country) {
+    if (category === "Elections" && country) {
       pollData.country = country;
       pollData.countryFlag = countryFlag;
       pollData.candidates = candidates || [];
@@ -299,90 +420,97 @@ router.post('/', auth, async (req, res) => {
     await poll.save();
 
     // Populate creator info
-    await poll.populate('createdBy', 'username avatar');
+    await poll.populate("createdBy", "username avatar");
 
     res.status(201).json({
-      message: 'Poll created successfully',
-      poll
+      message: "Poll created successfully",
+      poll,
     });
   } catch (error) {
-    console.error('Create poll error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Create poll error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // @route   PUT /api/polls/:id
 // @desc    Update a poll
 // @access  Private (Creator or Admin)
-router.put('/:id', auth, async (req, res) => {
+router.put("/:id", auth, async (req, res) => {
   try {
     const poll = await Poll.findById(req.params.id);
 
     if (!poll) {
-      return res.status(404).json({ message: 'Poll not found' });
+      return res.status(404).json({ message: "Poll not found" });
     }
 
     // Check if user is creator or admin
-    if (poll.createdBy.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-      return res.status(403).json({ message: 'Not authorized' });
+    if (
+      poll.createdBy.toString() !== req.user._id.toString() &&
+      !req.user.isAdmin
+    ) {
+      return res.status(403).json({ message: "Not authorized" });
     }
 
     // Only allow updates if poll is not resolved
     if (poll.isResolved) {
-      return res.status(400).json({ message: 'Cannot update resolved poll' });
+      return res.status(400).json({ message: "Cannot update a resolved poll" });
     }
 
-    const updatedPoll = await Poll.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    ).populate('createdBy', 'username avatar');
+    // If marketId is provided in the update, allow it to be set/updated.
+    // Uniqueness is enforced by the schema index; duplicate values will throw.
+    const updatedPoll = await Poll.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    }).populate("createdBy", "username avatar");
 
     res.json({
-      message: 'Poll updated successfully',
-      poll: updatedPoll
+      message: "Poll updated successfully",
+      poll: updatedPoll,
     });
   } catch (error) {
-    console.error('Update poll error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Update poll error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // @route   DELETE /api/polls/:id
 // @desc    Delete a poll
 // @access  Private (Creator or Admin)
-router.delete('/:id', auth, async (req, res) => {
+router.delete("/:id", auth, async (req, res) => {
   try {
     const poll = await Poll.findById(req.params.id);
 
     if (!poll) {
-      return res.status(404).json({ message: 'Poll not found' });
+      return res.status(404).json({ message: "Poll not found" });
     }
 
     // Check if user is creator or admin
-    if (poll.createdBy.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-      return res.status(403).json({ message: 'Not authorized' });
+    if (
+      poll.createdBy.toString() !== req.user._id.toString() &&
+      !req.user.isAdmin
+    ) {
+      return res.status(403).json({ message: "Not authorized" });
     }
 
     // Soft delete by setting isActive to false
     poll.isActive = false;
     await poll.save();
 
-    res.json({ message: 'Poll deleted successfully' });
+    res.json({ message: "Poll deleted successfully" });
   } catch (error) {
-    console.error('Delete poll error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Delete poll error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // @route   POST /api/polls/:id/save
 // @desc    Save/unsave a poll
 // @access  Private
-router.post('/:id/save', auth, async (req, res) => {
+router.post("/:id/save", auth, async (req, res) => {
   try {
     const poll = await Poll.findById(req.params.id);
     if (!poll) {
-      return res.status(404).json({ message: 'Poll not found' });
+      return res.status(404).json({ message: "Poll not found" });
     }
 
     const user = await User.findById(req.user._id);
@@ -399,30 +527,58 @@ router.post('/:id/save', auth, async (req, res) => {
     await user.save();
 
     res.json({
-      message: savedIndex > -1 ? 'Poll removed from saved' : 'Poll saved successfully',
-      saved: savedIndex === -1
+      message:
+        savedIndex > -1 ? "Poll removed from saved" : "Poll saved successfully",
+      saved: savedIndex === -1,
     });
   } catch (error) {
-    console.error('Save poll error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Save poll error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// @route   POST /api/polls/:id/redeem
+// @desc    Mark reward as claimed for a poll (after on-chain redeem)
+// @access  Private
+router.post("/:id/redeem", auth, async (req, res) => {
+  try {
+    const { txid } = req.body;
+    const poll = await Poll.findById(req.params.id);
+    if (!poll) return res.status(404).json({ message: "Poll not found" });
+
+    if (!poll.marketId) {
+      return res
+        .status(400)
+        .json({ message: "Poll does not have an associated marketId" });
+    }
+
+    // mark claimed and save tx id for audit
+    poll.rewardClaimed = true;
+    poll.lastRedeemTx = txid || null;
+    await poll.save();
+
+    res.json({ message: "Reward marked claimed", poll });
+  } catch (error) {
+    console.error("Redeem poll error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // @route   GET /api/polls/saved
 // @desc    Get user's saved polls
 // @access  Private
-router.get('/user/saved', auth, async (req, res) => {
+router.get("/user/saved", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate({
-      path: 'savedPolls',
+      path: "savedPolls",
       match: { isActive: true },
-      populate: { path: 'createdBy', select: 'username avatar' }
+      populate: { path: "createdBy", select: "username avatar" },
     });
 
     res.json(user.savedPolls);
   } catch (error) {
-    console.error('Get saved polls error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Get saved polls error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 

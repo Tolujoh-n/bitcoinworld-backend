@@ -40,10 +40,13 @@ app.use(express.urlencoded({ extended: true }));
 
 // Database connection
 mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/bitcoinworld", {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(
+    process.env.MONGODB_URI || "mongodb://localhost:27017/bitcoinworld",
+    {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    }
+  )
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
@@ -54,6 +57,7 @@ app.use("/api/users", require("./routes/users"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/trades", require("./routes/trades"));
 app.use("/api/comments", require("./routes/comments"));
+app.use("/api/stacks", require("./routes/stacks"));
 
 // Socket.io for real-time updates
 io.on("connection", (socket) => {
